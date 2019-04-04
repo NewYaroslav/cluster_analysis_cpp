@@ -32,7 +32,7 @@ int main()
     ClusterAnalysis<double> iClusterAnalysis;
 
     for(size_t i = 0; i < test_data.size(); ++i) {
-        // добавляем пример и нормализуем его
+        // добавляем пример
         std::cout << i << " " << test_data[i][0] << " " << test_data[i][1] << std::endl;
         iClusterAnalysis.add_sample(test_data[i], 0,  false);
     }

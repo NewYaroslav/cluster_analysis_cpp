@@ -305,9 +305,9 @@ private:
             data[i].resize(objects[i].data.size());
             for(size_t j = 0; j < objects[i].data.size(); ++j) {
                 data[i][j] = 2.0 * ((T)(objects[i].data[j] - min_data) / ampl) - 1.0;
-                std::cout << data[i][j] << " " << std::endl;
+                //std::cout << data[i][j] << " " << std::endl;
             }
-            std::cout << std::endl;
+            //std::cout << std::endl;
         }
         return OK;
     }
@@ -529,11 +529,6 @@ private:
     } // InitMean
 
     /** \brief Алгоритм k-средних ++
-     *
-     * \param
-     * \param
-     * \return
-     *
      */
     int cluster(
             std::vector<DataObject> &raw_data,
