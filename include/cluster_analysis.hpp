@@ -235,7 +235,7 @@ private:
         }
         for(size_t i = 0; i < x.size(); ++i) {
             double diff = x[i] - y[i];
-            sum = diff * diff;
+            sum += diff * diff;
         }
         d = std::sqrt(sum)/max_data;
         return OK;
@@ -570,6 +570,7 @@ private:
                 return err;
             }
             ++ct;
+			printf("progress: %.3f%%\r",(((double)ct/(double)maxCount) * 100.0));
         }
         for(size_t i = 0; i < clustering.size(); ++i) {
             raw_data[i].class_id = clustering[i];
