@@ -42,9 +42,6 @@ private:
     float custom_rand() {
         int j;
         long k;
-        //static long dummy2 = 123456789;
-        //static long iy = 0;
-        //static long iv[RAND_NTAB];
         float temp;
         if(rand_dummy <= 0 || !iy) {
             if(rand_dummy < 0) {
@@ -93,9 +90,12 @@ public:
     };
 
     enum SimilarityMeasureType {
-        EUCLIDEAN_DISTANCE = 0,
-        PEARSON_CORRELATION,
-        SPEARMAN_RANK_CORRELATION,
+        EUCLIDEAN_DISTANCE = 0,     ///< Евклидово расстояние
+        SQUARE_EUCLIDEAN_DISTANCE,  ///< Квадрат евклидова расстояния
+        MANHATTAN_DISTANCE,         ///< Манхэттенское расстояние
+        CHEBYSHEV_DISTANCE,         ///< Расстояние Чебышева
+        PEARSON_CORRELATION,        ///< Коэффициент корреляции Пирсона
+        SPEARMAN_RANK_CORRELATION,  ///< Коэффициент корреляции Спирмена
     };
 
     enum NormalizationType {
@@ -103,6 +103,7 @@ public:
         MINMAX_1_1 = 1,
     };
 private:
+
     /** \brief MinMax нормализация данных
      * \param in входные данные для нормализации
      * \param out нормализованный вектор
@@ -129,47 +130,87 @@ private:
         return OK;
     }
 
-    /**@brief Quick sort function (Быстрая сортировка Хоара)
-     * Данная функция нужна для коэффициента корреляции Спирмена
+    /** \brief Ранжирование для корреляции Спирмена
+     * \param x вектор данных
+     * \param xp ранги
      */
-    template<class T1, class T2>
-    void quick_sort(std::vector<T1> &a, std::vector<T2> &ra, long l, long r)
+    template<typename T1, typename T2>
+    void calculate_spearmen_ranking(std::vector<T1>& x, std::vector<T2> &xp)
     {
-        long i = l, j = r;
-        T1 temp, p;
-        p = a[ l + (r - l)/2 ];
-        do {
-            while(a[i] < p) i++;
-            while(a[j] > p) j--;
-            if (i <= j) {
-                temp = a[i];
-                a[i] = a[j];
-                a[j] = temp;
-                ra[i] = j;
-                ra[j] = i;
-                i++; j--;
-            }
-        } while(i <= j);
-        if(i < r)
-            quick_sort(a, ra, i, r);
-        if(l < j)
-            quick_sort(a, ra, l , j);
-    };
+        std::vector<T1> temp = x;
+        xp.resize(x.size());
+        std::sort(temp.begin(), temp.end());
+        temp.erase(std::unique(temp.begin(), temp.end()), temp.end());
 
-    /**@brief Quick sort function (Быстрая сортировка Хоара)
-     * Данная функция нужна для коэффициента корреляции Спирмена
+        for(size_t i = 0; i < xp.size(); ++i) {
+            auto it = std::lower_bound(temp.begin(), temp.end(), x[i]);
+            xp[i] = std::distance(temp.begin(), it) + 1;
+        }
+    }
+
+    /** \brief Посчитать количество повторяющихся рангов
+     * \param xp вектор рангов
+     * \return количество одинаковых рангов
      */
-    template<class T1, class T2>
-    void quick_sort(std::vector<T1> &a, std::vector<T2> &ra)
+    template<typename T1>
+    int calculate_repetitions_rank(std::vector<T1>& xp)
     {
-            std::vector<T1> _a = a;
-            quick_sort(_a, ra, 0, _a.size() - 1);
+        int num_repetitions = 0;
+        for(size_t i = 0; i < xp.size(); ++i) {
+            for(size_t j = i + 1; j < xp.size(); ++j) {
+                if(xp[i] == xp[j]) {
+                    num_repetitions++;
+                }
+            }
+        }
+        return num_repetitions;
+    }
+
+    /** \brief Переформирование рангов
+     * Факторам, имеющим одинаковое значение, присваивается новый ранг,
+     * равный средней арифметической номеров мест, занимаемых ими в упорядоченном ряду
+     * Почитать про переформирование можно например тут:
+     * http://www.teasib.ru/ewels-116-3.html
+     * \param xp вектор рангов, который будет переформирован
+     */
+    template<typename T1>
+    void calculate_reshaping_ranks(std::vector<T1>& xp)
+    {
+        std::vector<T1> temp = xp;      // тут будет храниться упорядоченный ряд
+        std::sort(temp.begin(), temp.end()); // создадим упорядоченный ряд
+        std::vector<T1> sum_ranks(xp.size(), 0);
+        std::vector<int> num_sum_ranks(xp.size(), 0);
+        for(size_t i = 0; i < xp.size(); ++i) {
+            auto it = std::lower_bound(temp.begin(), temp.end(), xp[i]);
+            int indx = std::distance(temp.begin(), it);
+            while(indx < temp.size() && temp[indx] == xp[i]) {
+                sum_ranks[i] += (indx + 1);
+                num_sum_ranks[i]++;
+                indx++;
+            }
+        }
+        // найдем новые ранги
+        for(size_t i = 0; i < xp.size(); ++i) {
+            xp[i] = sum_ranks[i] / (T1) num_sum_ranks[i];
+        }
+    }
+
+    /** \brief Контрольная сумма для корреляции Спирмена
+     * \param size количество выборок
+     * \return контрольная сумма
+     */
+    template<class T1>
+    T1 calculate_spearman_check_sum(int size)
+    {
+            return (T1)(size * size * size - size) / (T1)12.0;
     }
 
     /** \brief Коэффициент корреляции Спирмена
      * Коэффициент корреляции Спирмена - мера линейной связи между случайными величинами.
      * Корреляция Спирмена является ранговой, то есть для оценки силы связи используются не численные значения, а соответствующие им ранги.
      * Коэффициент инвариантен по отношению к любому монотонному преобразованию шкалы измерения.
+     * Ссылка на материал про коэффициент Спирмена
+     * https://math.semestr.ru/corel/spirmen.php
      * \param x первая выборка данных
      * \param y вторая выборка данных
      * \param p коэффициент корреляции Спирмена (от -1 до +1)
@@ -177,23 +218,45 @@ private:
      */
     int calc_spearman_rank_correlation_coefficient(std::vector<T>& x, std::vector<T> &y, double &p)
     {
-            if(x.size() != y.size() || x.size() == 0) {
-                return INVALID_PARAMETER;
-            }
-            // найдем ранги элементов
-            std::vector<int> rx(x.size());
-            std::vector<int> ry(y.size());
-            quick_sort(x, rx);
-            quick_sort(y, ry);
-            T sum = 0;
-            for(size_t i = 0; i < x.size(); ++i) {
-                T diff = rx[i] - ry[i];
-                sum += diff * diff;
-            }
+        if(x.size() != y.size() || x.size() == 0) {
+            return INVALID_PARAMETER;
+        }
+        // найдем ранги элементов
+        std::vector<T> rx(x.size());
+        std::vector<T> ry(y.size());
+        calculate_spearmen_ranking(x, rx);
+        calculate_spearmen_ranking(y, ry);
 
-            double n = x.size();
-            p = 1.0 - (6.0 /(n * (n - 1) * (n + 1))) * sum;
-            return OK;
+        int rep_x = calculate_repetitions_rank(rx);
+        int rep_y = calculate_repetitions_rank(ry);
+
+        T d1 = 0.0, d2 = 0.0;
+        if(rep_x > 0) {
+            d1 = calculate_spearman_check_sum<T>(rep_x);
+            T sum = std::accumulate(rx.begin(), rx.end(), T(0));
+            T calc_sum = (((T)rx.size() + 1.0) * (T)rx.size()) / 2.0;
+            if(sum != calc_sum) {
+                calculate_reshaping_ranks(rx);
+            }
+        }
+        if(rep_y > 0) {
+            d2 = calculate_spearman_check_sum<T>(rep_y);
+            T sum = std::accumulate(ry.begin(), ry.end(), T(0));
+            T calc_sum = (((T)ry.size() + 1.0) * (T)ry.size()) / 2.0;
+            if(sum != calc_sum) {
+                calculate_reshaping_ranks(ry);
+            }
+        }
+
+        T sum = 0;
+        for(size_t i = 0; i < x.size(); ++i) {
+            T diff = rx[i] - ry[i];
+            sum += diff * diff;
+        }
+
+        T n = x.size();
+        p = 1.0 - ((6.0 *  sum + d1 + d2)/(n * n * n - n));
+        return OK;
     }
 
     /** \brief Коэффициент корреляции Пирсона
@@ -227,17 +290,70 @@ private:
         return OK;
     }
 
-    int calc_euclidean_distance(std::vector<T>& x, std::vector<T> &y, double &d, double max_data) {
+    /** \brief Евклидово расстояние
+     * \param x образец X
+     * \param y образец Y
+     * \param d полученное расстояние
+     * \param max_data делитель для расстояния, по умолчанию равен 1
+     * \return состояние ошибки, 0 если все в порядке
+     */
+    int calc_euclidean_distance(std::vector<T>& x, std::vector<T> &y, double &d) {
         double sum = 0;
         if(x.size() != y.size() || x.size() == 0) {
-            std::cout << "error: x.size() != y.size() || x.size() == 0; x.size() = " << x.size() << " y.size() = " << y.size() << std::endl;
             return INVALID_PARAMETER;
         }
         for(size_t i = 0; i < x.size(); ++i) {
             double diff = x[i] - y[i];
             sum += diff * diff;
         }
-        d = std::sqrt(sum)/max_data;
+        d = std::sqrt(sum);
+        return OK;
+    }
+
+    /** \brief Квадрат евклидова расстояния
+     * \param x образец X
+     * \param y образец Y
+     * \param d полученное расстояние
+     * \param max_data делитель для расстояния, по умолчанию равен 1
+     * \return состояние ошибки, 0 если все в порядке
+     */
+    int calc_square_euclidean_distance(std::vector<T>& x, std::vector<T> &y, double &d) {
+        double sum = 0;
+        if(x.size() != y.size() || x.size() == 0) {
+            return INVALID_PARAMETER;
+        }
+        for(size_t i = 0; i < x.size(); ++i) {
+            double diff = x[i] - y[i];
+            sum += diff * diff;
+        }
+        d = sum;
+        return OK;
+    }
+
+    int calc_manhattan_distance(std::vector<T>& x, std::vector<T> &y, double &d) {
+        double sum = 0;
+        if(x.size() != y.size() || x.size() == 0) {
+            return INVALID_PARAMETER;
+        }
+        for(size_t i = 0; i < x.size(); ++i) {
+            sum += abs(x[i] - y[i]);
+        }
+        d = sum;
+        return OK;
+    }
+
+    int calc_chebyshev_distance(std::vector<T>& x, std::vector<T> &y, double &d) {
+        double dist = 0;
+        if(x.size() != y.size() || x.size() == 0) {
+            return INVALID_PARAMETER;
+        }
+        for(size_t i = 0; i < x.size(); ++i) {
+            double temp = abs(x[i] - y[i]);
+            if(dist < temp) {
+                dist = temp;
+            }
+        }
+        d = dist;
         return OK;
     }
 
@@ -249,7 +365,19 @@ private:
     int calc_distance(std::vector<T> &x, std::vector<T> &y, double &dist, int type) {
         int err = OK;
         if(type == EUCLIDEAN_DISTANCE) {
-            err = calc_euclidean_distance(x, y, dist, max_euclidean_distance);
+            err = calc_euclidean_distance(x, y, dist);
+            if(err != OK)   return err;
+        } else
+        if(type == SQUARE_EUCLIDEAN_DISTANCE) {
+            err = calc_square_euclidean_distance(x, y, dist);
+            if(err != OK)   return err;
+        } else
+        if(type == MANHATTAN_DISTANCE) {
+            err = calc_manhattan_distance(x, y, dist);
+            if(err != OK)   return err;
+        } else
+        if(type == CHEBYSHEV_DISTANCE) {
+            err = calc_chebyshev_distance(x, y, dist);
             if(err != OK)   return err;
         } else
         if(type == PEARSON_CORRELATION) {
@@ -283,7 +411,7 @@ private:
         }
     };
 
-    double max_euclidean_distance = 1;  /**< Максимальное Евкливдово расстояние */
+    //double max_euclidean_distance = 1.0;  /**< Максимальное Евкливдово расстояние */
     std::vector<DataObject> objects;    /**< Массив объектов */
 
 
@@ -305,9 +433,7 @@ private:
             data[i].resize(objects[i].data.size());
             for(size_t j = 0; j < objects[i].data.size(); ++j) {
                 data[i][j] = 2.0 * ((T)(objects[i].data[j] - min_data) / ampl) - 1.0;
-                //std::cout << data[i][j] << " " << std::endl;
             }
-            //std::cout << std::endl;
         }
         return OK;
     }
@@ -320,7 +446,6 @@ private:
      * \param type тип функции для нахождения меры соответствия
      * \param result вернет true если было переназначение
      * \return вернет 0 в случае успеха
-     *
      */
     int update_clustering(std::vector<std::vector<T>> &data, std::vector<int> &clustering, std::vector<std::vector<T>> &means, int type, bool &result) {
         result = false;
@@ -362,7 +487,6 @@ private:
      * \param
      * \param
      * \return
-     *
      */
     int update_means(std::vector<std::vector<T>> &data, std::vector<int> &clustering, std::vector<std::vector<T>> &means, int type, bool &result) {
         result = false;
@@ -434,8 +558,6 @@ public:
         class_center[0] = objects[0].data;
         int number_of_classes = 1; // количество классов
         //
-        //std::vector<int> class_of_objects(objects.size());
-        //class_of_objects[0] = 0;
         objects[0].class_id = 0;
         for(int i = 1; i < objects.size(); i++) {
             double min_distance = 0;

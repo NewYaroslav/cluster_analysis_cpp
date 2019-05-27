@@ -38,7 +38,7 @@ int main()
     }
 
     const int MAX_CLUSTER = 3;
-    iClusterAnalysis.update_k_mean_pp(MAX_CLUSTER, iClusterAnalysis.EUCLIDEAN_DISTANCE,123);
+    iClusterAnalysis.update_k_mean_pp(MAX_CLUSTER, iClusterAnalysis.SQUARE_EUCLIDEAN_DISTANCE,123);
     std::cout << std::endl;
     std::cout << "clusters " << std::endl;
     std::cout << std::endl;
